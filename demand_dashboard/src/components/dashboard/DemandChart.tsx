@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { 
   AreaChart, 
   Area, 
@@ -10,8 +10,7 @@ import {
   Legend
 } from 'recharts';
 import { generateForecastData } from '@/lib/mockData';
-import { useApi } from '@/lib/apiprovider';
-import { useQuery } from '@tanstack/react-query';
+import { useForecast } from '@/hooks/useForecast';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -25,50 +24,44 @@ const timeRanges = [
   { label: '30D', days: 30 },
 ];
 
+const DEFAULT_SKU = 'GS-019';
+
 export function DemandChart({ className }: DemandChartProps) {
   const [selectedRange, setSelectedRange] = useState(14);
-  const api = useApi();
+  const forecastQuery = useForecast({ sku: DEFAULT_SKU, horizon: selectedRange });
 
-  // fetch historic series for a default SKU and forecast
-  const sku = 'GS-019';
+  const data = useMemo(() => {
+    const forecast = forecastQuery.data;
+    if (!forecast) return generateForecastData(selectedRange);
 
-  const historicQuery = useQuery({
-    queryKey: ['historic', sku],
-    queryFn: () => api.fetchJson(`/api/historic?sku=${sku}`),
-    staleTime: 60_000,
-    retry: 1,
-  });
-
-  const forecastQuery = useQuery({
-    queryKey: ['forecast', sku, selectedRange],
-    queryFn: () => api.fetchJson(`/api/forecast?sku=${sku}&horizon=${selectedRange}`),
-    staleTime: 60_000,
-    retry: 1,
-    enabled: !!historicQuery.data || true,
-  });
-
-  // combine into chart data, fallback to mock
-  let data = generateForecastData(selectedRange);
-  try {
-    if (historicQuery.data && Array.isArray(historicQuery.data.dates)) {
-      const histDates: string[] = historicQuery.data.dates || [];
-      const histValues: number[] = historicQuery.data.values || [];
-      const combined: any[] = [];
-      for (let i = 0; i < histDates.length; i++) {
-        combined.push({ date: histDates[i], historical: histValues[i] });
+    const rows = new Map<string, { date: string; historical?: number; forecast?: number; forecastLow?: number; forecastHigh?: number }>();
+    const ensureRow = (date: string) => {
+      if (!rows.has(date)) {
+        rows.set(date, { date });
       }
-      if (forecastQuery.data && Array.isArray(forecastQuery.data.forecast_dates || forecastQuery.data.forecastDates)) {
-        const fcDates = forecastQuery.data.forecast_dates || forecastQuery.data.forecastDates || [];
-        const fcVals = forecastQuery.data.forecast || [];
-        for (let i = 0; i < fcDates.length; i++) {
-          combined.push({ date: fcDates[i], forecast: fcVals[i] });
-        }
-      }
-      if (combined.length) data = combined;
-    }
-  } catch (e) {
-    // keep mock data
-  }
+      return rows.get(date)!;
+    };
+
+    (forecast.historical || []).forEach((point) => {
+      ensureRow(point.date).historical = point.units;
+    });
+
+    (forecast.point_forecast || []).forEach((point) => {
+      ensureRow(point.date).forecast = point.units;
+    });
+
+    const applyInterval = (interval: { date: string; units: number }[] | undefined, key: 'forecastLow' | 'forecastHigh') => {
+      (interval || []).forEach((point) => {
+        ensureRow(point.date)[key] = point.units;
+      });
+    };
+
+    applyInterval(forecast.confidence_intervals?.low, 'forecastLow');
+    applyInterval(forecast.confidence_intervals?.high, 'forecastHigh');
+
+    const combined = Array.from(rows.values()).sort((a, b) => a.date.localeCompare(b.date));
+    return combined.length ? combined : generateForecastData(selectedRange);
+  }, [forecastQuery.data, selectedRange]);
 
   return (
     <div className={cn("bg-card rounded-xl border p-5", className)}>

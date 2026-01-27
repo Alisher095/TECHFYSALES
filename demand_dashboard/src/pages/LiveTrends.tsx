@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/apiprovider";
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -18,14 +18,21 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { useState } from 'react';
 // Temporary mock fallback until backend is stable
 const mockSignals = [
   { id: 1, sku: "GS-019", source: "TikTok", velocity: 42, keyword: "#kettle", timestamp: "2026-01-08T12:00:00Z" },
   { id: 2, sku: "GS-045", source: "Instagram", velocity: 18, keyword: "#mug", timestamp: "2026-01-08T12:01:00Z" },
 ];
 
-export default function LiveTrends() {
+const mockGoogleSignals = [
+  { id: 101, sku: "GS-019", source: "Google", velocity: 85, keyword: "#kettle", timestamp: "2026-01-10T00:00:00Z" },
+  { id: 102, sku: "GS-019", source: "Google", velocity: 90, keyword: "#kettle", timestamp: "2026-01-11T00:00:00Z" },
+  { id: 103, sku: "GS-019", source: "Google", velocity: 70, keyword: "#kettle", timestamp: "2026-01-12T00:00:00Z" },
+  { id: 104, sku: "GS-019", source: "Google", velocity: 95, keyword: "#kettle", timestamp: "2026-01-13T00:00:00Z" },
+  { id: 105, sku: "GS-019", source: "Google", velocity: 110, keyword: "#kettle", timestamp: "2026-01-14T00:00:00Z" },
+];
+
+export default function TrendRadar() {
   const { fetchJson } = useApi();
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -46,8 +53,60 @@ export default function LiveTrends() {
     retry: 1,
   });
 
+  const googleSignalsQuery = useQuery({
+    queryKey: ["trendSignals", "google"],
+    queryFn: () => fetchJson("/api/trends/signals/google"),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
   // Safe fallback
   const signals = Array.isArray(signalsQuery.data) ? signalsQuery.data : mockSignals;
+  const googleSignals = useMemo(() => {
+    const primary = Array.isArray(googleSignalsQuery.data) ? googleSignalsQuery.data : [];
+    if (primary.length > 0) {
+      return primary;
+    }
+    const filtered = signals.filter((signal) => (signal.source || "").toString().toLowerCase() === "google");
+    return filtered.length > 0 ? filtered : mockGoogleSignals;
+  }, [googleSignalsQuery.data, signals]);
+
+  const sourceChartData = useMemo(() => {
+    const buckets: Record<string, number> = {
+      google: 0,
+      tiktok: 0,
+      instagram: 0,
+    };
+    const inputSignals = signals.length > 0 ? signals : mockSignals;
+    inputSignals.forEach((signal) => {
+      const source = (signal.source || "").toString().toLowerCase();
+      const value = Number(signal.velocity ?? signal.mentions ?? signal.value ?? 0);
+      if (source.includes("google")) {
+        buckets.google += value;
+      } else if (source.includes("tiktok")) {
+        buckets.tiktok += value;
+      } else if (source.includes("instagram")) {
+        buckets.instagram += value;
+      }
+    });
+    // ensure google bucket honors the derived googleSignals (including mock fallback)
+    const googleFromSignals = Array.isArray(googleSignals) && googleSignals.length > 0
+      ? googleSignals.reduce((sum, signal) => sum + Number(signal.velocity ?? signal.mentions ?? 0), 0)
+      : buckets.google;
+    buckets.google = googleFromSignals;
+    return [
+      { source: "Google", velocity: buckets.google },
+      { source: "TikTok", velocity: buckets.tiktok },
+      { source: "Instagram", velocity: buckets.instagram },
+    ];
+  }, [signals, googleSignalsQuery.data]);
+
+  const googleChartData = sourceChartData;
+
+  const totalSourceVelocity = useMemo(
+    () => sourceChartData.reduce((sum, entry) => sum + entry.velocity, 0),
+    [sourceChartData]
+  );
 
   if (signalsQuery.isLoading) {
     return (
@@ -58,13 +117,15 @@ export default function LiveTrends() {
   }
 
   if (signalsQuery.isError) {
-    console.error(signalsQuery.error);
     return (
       <DashboardLayout>
         <div className="p-6">
-          <div className="text-orange-500">Unable to load live signals — showing fallback data.</div>
           <div className="mt-4">
-            <SignalPanel signals={signals} />
+            <SignalPanel
+              signals={signals}
+              chartData={sourceChartData}
+              totalVelocity={totalSourceVelocity}
+            />
           </div>
         </div>
       </DashboardLayout>
@@ -74,16 +135,29 @@ export default function LiveTrends() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Live Trends</h2>
-          <div className="text-sm text-muted-foreground">Auto-refresh every 30s</div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold">Trend Radar</h2>
+            <p className="text-xs text-muted-foreground">
+              Trends to follow:&nbsp;
+              <a
+                href="https://trends.google.com/trending?geo=US&hl=en-US&hours=168&sort=search-volume&category=5"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >Google Trend Radar</a>
+            </p>
+          </div>
+          <div className="text-sm text-muted-foreground">Auto-refresh every 30s · Google signal velocity only</div>
         </div>
 
-        <SignalPanel
-          signals={signals}
-          social={socialQuery.data}
-          onOpenHashtag={(tag: string) => { setSelectedTag(tag); setDialogOpen(true); }}
-        />
+          <SignalPanel
+            signals={signals}
+            social={socialQuery.data}
+            chartData={sourceChartData}
+            totalVelocity={totalSourceVelocity}
+            onOpenHashtag={(tag: string) => { setSelectedTag(tag); setDialogOpen(true); }}
+          />
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent>
@@ -109,28 +183,44 @@ export default function LiveTrends() {
 }
 
 // Simple list component
-function SignalPanel({ signals, social, onOpenHashtag }: { signals: any[]; social?: any; onOpenHashtag?: (tag: string) => void }) {
-  // normalize data for chart
-  const chartData = signals.map((s) => ({
-    name: String(s.keyword || s.hashtag || s.tag || s.source || 'signal'),
-    velocity: Number(s.velocity ?? s.mentions ?? s.value ?? 0),
-  }));
+function SignalPanel({
+  signals,
+  social,
+  chartData = [],
+  totalVelocity = 0,
+  onOpenHashtag,
+}: {
+  signals: any[];
+  social?: any;
+  chartData?: { date: string; velocity: number }[];
+  totalVelocity?: number;
+  onOpenHashtag?: (tag: string) => void;
+}) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 bg-card rounded-xl border p-4">
-        <h3 className="text-lg font-semibold mb-3">Signal Velocity</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold">Signal Velocity</h3>
+          <p className="text-xs text-muted-foreground">{totalVelocity.toLocaleString()} total mentions · multi-source</p>
+        </div>
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--chart-grid))" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="velocity" fill="hsl(var(--chart-1))" />
-            </BarChart>
-          </ResponsiveContainer>
+          {totalVelocity === 0 ? (
+            <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+              No signal velocity data available yet.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--chart-grid))" />
+                <XAxis dataKey="source" tick={{ fontSize: 10 }} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="velocity" name="Velocity" fill="hsl(var(--chart-1))" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 

@@ -1,10 +1,10 @@
-import { TrendingSKU } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
+import type { TrendingSku } from '@/lib/apiprovider';
 import { TrendingUp, Clock, DollarSign, Target } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 interface TrendingTableProps {
-  data: TrendingSKU[];
+  data: TrendingSku[];
 }
 
 export function TrendingTable({ data }: TrendingTableProps) {
@@ -26,7 +26,7 @@ export function TrendingTable({ data }: TrendingTableProps) {
         <tbody>
           {rowsToRender.map((item: any, index: number) => {
             const isPlaceholder = empty;
-            const name = isPlaceholder ? '' : item.name;
+            const name = isPlaceholder ? '' : item.title || item.sku;
             const sku = isPlaceholder ? '' : item.sku;
             const trendSpike = isPlaceholder ? null : item.trendSpike;
             const timeUntilStockout = isPlaceholder ? '' : item.timeUntilStockout;

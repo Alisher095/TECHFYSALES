@@ -135,23 +135,23 @@ export const generateForecastData = (days: number = 30): ForecastData[] => {
 };
 
 export const aiRecommendations: AIRecommendation[] = [
-  { id: '1', skuName: 'Green Silk Scarf', skuId: 'GS-019', action: 'Emergency Reorder', quantity: 500, supplier: 'Milano Textiles', revenueProtected: 45200, status: 'pending', createdAt: '2024-01-15T10:30:00Z' },
-  { id: '2', skuName: 'Vintage Denim Jacket', skuId: 'VDJ-045', action: 'Store Transfer', quantity: 150, supplier: 'Chicago DC → SoHo', revenueProtected: 89500, status: 'drafted', createdAt: '2024-01-15T09:15:00Z' },
-  { id: '3', skuName: 'Pearl Drop Earrings', skuId: 'PDE-112', action: 'Express Restock', quantity: 300, supplier: 'Tokyo Jewelry Co.', revenueProtected: 23800, status: 'approved', createdAt: '2024-01-14T16:45:00Z' },
-  { id: '4', skuName: 'Cashmere Blend Sweater', skuId: 'CBS-067', action: 'Standard Reorder', quantity: 200, supplier: 'Scottish Woolens', revenueProtected: 67300, status: 'pending', createdAt: '2024-01-14T14:20:00Z' },
+  { id: '1', skuName: 'Green Silk Scarf', skuId: 'GS-019', action: 'Emergency Reorder', quantity: 650, supplier: 'Milano Textiles', revenueProtected: 58200, status: 'pending', createdAt: '2026-01-18T10:30:00Z' },
+  { id: '2', skuName: 'Vintage Denim Jacket', skuId: 'VDJ-045', action: 'Store Transfer', quantity: 180, supplier: 'Chicago DC → SoHo', revenueProtected: 95000, status: 'drafted', createdAt: '2026-01-18T09:15:00Z' },
+  { id: '3', skuName: 'Pearl Drop Earrings', skuId: 'PDE-112', action: 'Express Restock', quantity: 320, supplier: 'Tokyo Jewelry Co.', revenueProtected: 24800, status: 'approved', createdAt: '2026-01-17T16:45:00Z' },
+  { id: '4', skuName: 'Cashmere Blend Sweater', skuId: 'CBS-067', action: 'Standard Reorder', quantity: 260, supplier: 'Scottish Woolens', revenueProtected: 72000, status: 'pending', createdAt: '2026-01-17T14:20:00Z' },
 ];
 
 export const purchaseOrders: PurchaseOrder[] = [
-  { id: '1', poNumber: 'PO-2024-0892', supplier: 'Milano Textiles', items: 8, totalValue: 125000, status: 'approved', createdAt: '2024-01-15', expectedDelivery: '2024-01-22' },
-  { id: '2', poNumber: 'PO-2024-0891', supplier: 'Tokyo Jewelry Co.', items: 12, totalValue: 89000, status: 'sent', createdAt: '2024-01-14', expectedDelivery: '2024-01-25' },
-  { id: '3', poNumber: 'PO-2024-0890', supplier: 'Scottish Woolens', items: 5, totalValue: 67500, status: 'draft', createdAt: '2024-01-14', expectedDelivery: '2024-01-28' },
-  { id: '4', poNumber: 'PO-2024-0889', supplier: 'Premium Leather Works', items: 15, totalValue: 234000, status: 'received', createdAt: '2024-01-10', expectedDelivery: '2024-01-17' },
-  { id: '5', poNumber: 'PO-2024-0888', supplier: 'Artisan Accessories', items: 20, totalValue: 156000, status: 'approved', createdAt: '2024-01-08', expectedDelivery: '2024-01-20' },
+  { id: '1', poNumber: 'PO-2026-1034', supplier: 'Milano Textiles', items: 11, totalValue: 145000, status: 'approved', createdAt: '2026-01-15', expectedDelivery: '2026-01-22' },
+  { id: '2', poNumber: 'PO-2026-1033', supplier: 'Tokyo Jewelry Co.', items: 14, totalValue: 98000, status: 'sent', createdAt: '2026-01-14', expectedDelivery: '2026-01-25' },
+  { id: '3', poNumber: 'PO-2026-1032', supplier: 'Scottish Woolens', items: 6, totalValue: 75000, status: 'draft', createdAt: '2026-01-14', expectedDelivery: '2026-01-28' },
+  { id: '4', poNumber: 'PO-2026-1031', supplier: 'Premium Leather Works', items: 18, totalValue: 255000, status: 'received', createdAt: '2026-01-10', expectedDelivery: '2026-01-17' },
+  { id: '5', poNumber: 'PO-2026-1030', supplier: 'Artisan Accessories', items: 22, totalValue: 158000, status: 'approved', createdAt: '2026-01-08', expectedDelivery: '2026-01-20' },
 ];
 
 export const revenueProjection = {
-  protected: 420000,
-  atRisk: 85000,
+  protected: 520000,
+  atRisk: 76000,
   period: '14 days',
 };
 

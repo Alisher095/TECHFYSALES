@@ -1,5 +1,6 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useMemo } from 'react';
 import { useApi } from '@/lib/apiprovider';
+import type { TrendsResponse, SkuMappingResponse } from '@/lib/apiprovider';
 import { useQuery } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -7,7 +8,6 @@ const AlertCard = React.lazy(() => import('@/components/dashboard/AlertCard').th
 const TrendingTable = React.lazy(() => import('@/components/dashboard/TrendingTable').then((mod) => ({ default: mod.TrendingTable })));
 const DemandChart = React.lazy(() => import('@/components/dashboard/DemandChart').then((mod) => ({ default: mod.DemandChart })));
 import ErrorBoundary from '@/components/ui/error-boundary';
-import { useMemo } from 'react';
 import { 
   TrendingUp, 
   AlertTriangle, 
@@ -16,52 +16,45 @@ import {
   Package,
   BarChart3
 } from 'lucide-react';
+import { useForecast } from '@/hooks/useForecast';
 
-const Overview = () => {
-  const api = useApi();
-  const skuMappingsQuery = useQuery({
-    queryKey: ['skuMappings'],
-    queryFn: () => api.fetchJson('/api/sku-mappings'),
+const KeyMetrics = () => {
+  const { fetchJson, fetchTrends, fetchSkuMapping } = useApi();
+  const skuMappingQuery = useQuery<SkuMappingResponse>({
+    queryKey: ['skuMapping'],
+    queryFn: fetchSkuMapping,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const trendsQuery = useQuery<TrendsResponse>({
+    queryKey: ['trendsOverview'],
+    queryFn: fetchTrends,
     staleTime: 60_000,
     retry: 1,
   });
 
   const socialQuery = useQuery({
     queryKey: ['social'],
-    queryFn: () => api.fetchJson('/api/social'),
+    queryFn: () => fetchJson('/api/social'),
     staleTime: 60_000,
     retry: 1,
   });
 
-  const skuData = Array.isArray(skuMappingsQuery.data) ? skuMappingsQuery.data : [];
+  const forecastQuery = useForecast({ sku: 'GS-019', horizon: 14 });
 
-  // Derived KPI values (fallback to mocks)
-  const kpis = useMemo(() => {
-    const skus = Array.isArray(skuMappingsQuery.data) ? skuMappingsQuery.data : null;
-    const social = socialQuery.data && socialQuery.data.rows ? socialQuery.data.rows : null;
-
-    const skusMonitored = skus ? skus.length : 0;
-
-    const activeAlerts = social ? social.filter((r: any) => Number(r.mentions) >= 50).length : 0;
-
-    // Simple heuristic revenue projection derived from sku mapping scores
-    const revenueProtected = skus ? Math.round(skus.reduce((s: number, it: any) => s + ((it.score || 0) * 100000), 0)) : 0;
-    const revenueAtRisk = skus ? Math.round(skus.reduce((s: number, it: any) => s + ((1 - (it.score || 0)) * 50000), 0)) : 0;
-
-    return {
-      skusMonitored,
-      activeAlerts,
-      revenueProtected,
-      revenueAtRisk,
-    };
-  }, [skuMappingsQuery.data, socialQuery.data]);
+  const skuMappings = skuMappingQuery.data?.mappings ?? [];
+  const trendingSource = trendsQuery.data?.trending_skus ?? skuMappings;
+  const trendingTableRows = useMemo(() => {
+    if (!trendingSource || trendingSource.length === 0) return [];
+    return [...trendingSource].sort((a, b) => b.trendSpike - a.trendSpike).slice(0, 10);
+  }, [trendingSource]);
 
   // Build alerts from social rows
   const derivedAlerts = useMemo(() => {
     const rows = socialQuery.data && socialQuery.data.rows ? socialQuery.data.rows : null;
     if (!rows) return [];
 
-    // take recent posts, map to AIAlert-like shape
     return rows
       .slice()
       .sort((a: any, b: any) => (Number(b.mentions) || 0) - (Number(a.mentions) || 0))
@@ -80,69 +73,55 @@ const Overview = () => {
       });
   }, [socialQuery.data]);
 
-  // Enrich SKU mappings with social-derived metrics for TrendingTable
-  const trendingRows = useMemo(() => {
-    const skus = Array.isArray(skuMappingsQuery.data) ? skuMappingsQuery.data : null;
-    const rows = socialQuery.data && socialQuery.data.rows ? socialQuery.data.rows : null;
-    if (!skus) return [];
+  const kpis = useMemo(() => {
+    const revenueProtected = forecastQuery.data?.aggregate_metrics?.expected_revenue ?? null;
+    const trendingRevenueAtRisk = trendingTableRows.reduce((sum, row) => sum + (row.revenueAtRisk || 0), 0);
+    const revenueAtRisk = forecastQuery.data?.aggregate_metrics?.stockout_risk_pct
+      ? Math.round((forecastQuery.data.aggregate_metrics.stockout_risk_pct / 100) * trendingRevenueAtRisk)
+      : (trendingRevenueAtRisk || null);
+    const actionRequired = trendingTableRows.filter((row) => row.status === 'action_required').length;
+    const activeAlerts = Math.max(actionRequired, derivedAlerts.length);
 
-    // compute mentions per sku
-    const mentionsBySku: Record<string, number> = {};
-    if (rows) {
-      for (const r of rows) {
-        const key = r.sku || r.hashtag || 'unknown';
-        mentionsBySku[key] = (mentionsBySku[key] || 0) + (Number(r.mentions) || 0);
-      }
-    }
+    return {
+      skusMonitored: skuMappings.length,
+      activeAlerts,
+      revenueProtected,
+      revenueAtRisk,
+    };
+  }, [derivedAlerts.length, forecastQuery.data, skuMappings.length, trendingTableRows]);
 
-    return skus.map((s: any, idx: number) => {
-      const mentions = mentionsBySku[s.sku] || 0;
-      const baseline = 50; // used to scale spike
-      const trendSpike = Math.min(999, Math.round((mentions / Math.max(1, baseline)) * 100));
-      const timeUntilStockout = (s.score || 0) < 0.85 ? '18 hours' : '3 days';
-      const revenueAtRisk = Math.round((1 - (s.score || 0)) * 120000);
-      const confidence = Math.round((s.score || 0) * 100);
-      return {
-        id: s.sku || `sku-${idx}`,
-        name: s.title || s.sku,
-        sku: s.sku || s.title,
-        trendSpike,
-        timeUntilStockout,
-        revenueAtRisk,
-        confidence,
-      };
-    }).sort((a: any, b: any) => b.trendSpike - a.trendSpike).slice(0, 10);
-  }, [skuMappingsQuery.data, socialQuery.data]);
+  const formatCurrency = (value: number | null | undefined) =>
+    typeof value === 'number' ? `$${value.toLocaleString()}` : '—';
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {/* Page Header */}
         <div className="animate-fade-up">
-          <h2 className="text-2xl font-bold text-foreground">Executive Overview</h2>
-          <p className="text-muted-foreground mt-1">Real-time demand insights and AI-powered recommendations</p>
+          <h2 className="text-2xl font-bold text-foreground">Key Metrics</h2>
+          <p className="text-muted-foreground mt-1">Executive demand insights powered by Sensing Engine</p>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-up" style={{ animationDelay: '0.1s' }}>
           <StatCard
             title="Revenue Protected"
-            value={`$${(kpis.revenueProtected / 1000).toFixed(0)}K`}
-            subtitle={`Next 14 days`}
+            value={forecastQuery.isLoading ? 'Loading…' : formatCurrency(kpis.revenueProtected)}
+            subtitle="Next 14 days"
             icon={Shield}
             variant="success"
             trend={{ value: 12.5, isPositive: true }}
           />
           <StatCard
             title="Revenue at Risk"
-            value={`$${(kpis.revenueAtRisk / 1000).toFixed(0)}K`}
+            value={forecastQuery.isLoading ? 'Loading…' : formatCurrency(kpis.revenueAtRisk)}
             subtitle="Requires immediate action"
             icon={AlertTriangle}
             variant="danger"
           />
           <StatCard
-            title="Active AI Alerts"
-            value={kpis.activeAlerts}
+            title="Recommended Actions"
+            value={forecastQuery.isLoading ? '-' : kpis.activeAlerts}
             subtitle={`${(socialQuery.data && socialQuery.data.rows) ? socialQuery.data.rows.length : 0} total signals`}
             icon={TrendingUp}
             variant="warning"
@@ -156,6 +135,22 @@ const Overview = () => {
             trend={{ value: 8.2, isPositive: true }}
           />
         </div>
+        {forecastQuery.isLoading && (
+          <div className="text-xs text-muted-foreground">Fetching latest forecast…</div>
+        )}
+        {forecastQuery.isSuccess && forecastQuery.data && (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span className="px-3 py-1 rounded-full border border-border bg-background/50">Model {forecastQuery.data.model_version}</span>
+            <span>Last updated {new Date(forecastQuery.data.last_updated).toLocaleString()}</span>
+            <span>{forecastQuery.data.ttl_seconds ? `TTL ${forecastQuery.data.ttl_seconds}s` : ''}</span>
+          </div>
+        )}
+        {forecastQuery.isError && (
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <AlertTriangle className="w-4 h-4" />
+            Forecast unavailable — demo mode
+          </div>
+        )}
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -165,26 +160,29 @@ const Overview = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-primary" />
-                    Trending SKUs at Risk
+                    Top Trending SKUs
                   </h3>
                   <p className="text-sm text-muted-foreground">Top 5 products requiring attention</p>
                 </div>
                 <span className="status-badge status-action-required">
                   <AlertTriangle className="w-3 h-3" />
-                  {(trendingRows && trendingRows.filter((s: any) => s.timeUntilStockout.includes('hour')).length) || 0} Critical
+                  {(trendingTableRows && trendingTableRows.filter((s: any) => s.timeUntilStockout.includes('hour')).length) || 0} Critical
                 </span>
               </div>
               <ErrorBoundary>
                   <Suspense fallback={<div className="p-4">Loading trending table...</div>}>
-                  <TrendingTable data={trendingRows.length ? trendingRows : skuData} />
+                  <TrendingTable data={trendingTableRows} />
                 </Suspense>
               </ErrorBoundary>
             </div>
 
-          {/* AI Alerts */}
+          {/* Recommended Actions */}
           <div className="bg-card rounded-xl border p-5 animate-fade-up" style={{ animationDelay: '0.3s' }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">Today's AI Alerts</h3>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Recommended Actions</h3>
+                <p className="text-xs text-muted-foreground">Review and approve AI-recommended actions before execution.</p>
+              </div>
               <span className="text-xs font-medium text-primary cursor-pointer hover:underline">View All</span>
             </div>
             <div className="space-y-3">
@@ -219,7 +217,9 @@ const Overview = () => {
               <p className="text-muted-foreground">Next 14 days projection based on AI analysis</p>
             </div>
             <div className="ml-auto text-right">
-              <p className="text-3xl font-bold text-success">${(kpis.revenueProtected / 1000).toFixed(0)}K</p>
+              <p className="text-3xl font-bold text-success">
+                {forecastQuery.isLoading ? 'Loading…' : formatCurrency(kpis.revenueProtected)}
+              </p>
               <p className="text-sm text-muted-foreground">revenue protected through early detection</p>
             </div>
           </div>
@@ -229,4 +229,4 @@ const Overview = () => {
   );
 };
 
-export default Overview;
+export default KeyMetrics;
