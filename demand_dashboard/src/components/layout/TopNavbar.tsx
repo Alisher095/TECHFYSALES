@@ -35,10 +35,7 @@ export function TopNavbar({ onMenuToggle }: TopNavbarProps) {
 
       <div className="flex items-center gap-2">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-        </Button>
+
 
         {/* Theme Toggle */}
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
@@ -48,13 +45,7 @@ export function TopNavbar({ onMenuToggle }: TopNavbarProps) {
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 pl-2 pr-3">
-              <Avatar className="w-8 h-8">
-                <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" />
-                <AvatarFallback>AD</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium hidden sm:inline">Admin</span>
-            </Button>
+
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
