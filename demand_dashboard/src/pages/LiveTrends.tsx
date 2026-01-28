@@ -33,7 +33,7 @@ const mockGoogleSignals = [
 ];
 
 export default function TrendRadar() {
-  const { fetchJson } = useApi();
+  const { fetchJson, fetchTrends } = useApi();
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -56,6 +56,13 @@ export default function TrendRadar() {
   const googleSignalsQuery = useQuery({
     queryKey: ["trendSignals", "google"],
     queryFn: () => fetchJson("/api/trends/signals/google"),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const trendsQuery = useQuery({
+    queryKey: ["trends"],
+    queryFn: fetchTrends,
     staleTime: 60_000,
     retry: 1,
   });
@@ -125,6 +132,7 @@ export default function TrendRadar() {
               signals={signals}
               chartData={sourceChartData}
               totalVelocity={totalSourceVelocity}
+              trendKeywords={trendsQuery.data?.trend_keywords}
             />
           </div>
         </div>
@@ -156,6 +164,7 @@ export default function TrendRadar() {
             social={socialQuery.data}
             chartData={sourceChartData}
             totalVelocity={totalSourceVelocity}
+            trendKeywords={trendsQuery.data?.trend_keywords}
             onOpenHashtag={(tag: string) => { setSelectedTag(tag); setDialogOpen(true); }}
           />
 
@@ -188,12 +197,14 @@ function SignalPanel({
   social,
   chartData = [],
   totalVelocity = 0,
+  trendKeywords = [],
   onOpenHashtag,
 }: {
   signals: any[];
   social?: any;
   chartData?: { date: string; velocity: number }[];
   totalVelocity?: number;
+  trendKeywords?: Array<{ keyword: string; mentions: number; change24: number; change7: number }>;
   onOpenHashtag?: (tag: string) => void;
 }) {
 
@@ -236,6 +247,25 @@ function SignalPanel({
               <div className="text-sm font-semibold text-foreground">{t.count ?? t.mentions ?? 0}</div>
             </button>
           ))}
+        </div>
+
+        <h3 className="text-lg font-semibold mb-3">Top Keywords</h3>
+        <div className="space-y-2 mb-4">
+          {(trendKeywords || []).length === 0 ? (
+            <div className="text-xs text-muted-foreground">No keyword trends available yet.</div>
+          ) : (
+            (trendKeywords || []).slice(0, 6).map((item) => (
+              <div key={item.keyword} className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{item.keyword}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.change24 >= 0 ? '+' : ''}{item.change24}% 24h · {item.change7 >= 0 ? '+' : ''}{item.change7}% 7d
+                  </p>
+                </div>
+                <div className="text-sm font-semibold text-foreground">{item.mentions}</div>
+              </div>
+            ))
+          )}
         </div>
 
         <h3 className="text-lg font-semibold mb-3">Recent Signals</h3>
