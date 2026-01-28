@@ -33,7 +33,7 @@ const mockGoogleSignals = [
 ];
 
 export default function TrendRadar() {
-  const { fetchJson } = useApi();
+  const { fetchJson, fetchTrends } = useApi();
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -56,6 +56,13 @@ export default function TrendRadar() {
   const googleSignalsQuery = useQuery({
     queryKey: ["trendSignals", "google"],
     queryFn: () => fetchJson("/api/trends/signals/google"),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const trendsQuery = useQuery({
+    queryKey: ["trends"],
+    queryFn: fetchTrends,
     staleTime: 60_000,
     retry: 1,
   });
@@ -101,11 +108,20 @@ export default function TrendRadar() {
     ];
   }, [signals, googleSignalsQuery.data]);
 
-  const googleChartData = sourceChartData;
+  const chartData = useMemo(() => {
+    const trendSources = trendsQuery.data?.signal_sources ?? [];
+    if (trendSources.length > 0) {
+      return trendSources.map((source: any) => ({
+        source: String(source.name || source.source || '').toString() || 'Unknown',
+        velocity: Number(source.mentions ?? 0),
+      }));
+    }
+    return sourceChartData;
+  }, [sourceChartData, trendsQuery.data]);
 
   const totalSourceVelocity = useMemo(
-    () => sourceChartData.reduce((sum, entry) => sum + entry.velocity, 0),
-    [sourceChartData]
+    () => chartData.reduce((sum, entry) => sum + entry.velocity, 0),
+    [chartData]
   );
 
   if (signalsQuery.isLoading) {
@@ -123,7 +139,7 @@ export default function TrendRadar() {
           <div className="mt-4">
             <SignalPanel
               signals={signals}
-              chartData={sourceChartData}
+              chartData={chartData}
               totalVelocity={totalSourceVelocity}
             />
           </div>
@@ -154,7 +170,7 @@ export default function TrendRadar() {
           <SignalPanel
             signals={signals}
             social={socialQuery.data}
-            chartData={sourceChartData}
+            chartData={chartData}
             totalVelocity={totalSourceVelocity}
             onOpenHashtag={(tag: string) => { setSelectedTag(tag); setDialogOpen(true); }}
           />
