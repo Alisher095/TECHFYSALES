@@ -33,7 +33,7 @@ const mockGoogleSignals = [
 ];
 
 export default function TrendRadar() {
-  const { fetchJson } = useApi();
+  const { fetchJson, fetchTrends } = useApi();
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -56,6 +56,13 @@ export default function TrendRadar() {
   const googleSignalsQuery = useQuery({
     queryKey: ["trendSignals", "google"],
     queryFn: () => fetchJson("/api/trends/signals/google"),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const trendsQuery = useQuery({
+    queryKey: ["trends"],
+    queryFn: fetchTrends,
     staleTime: 60_000,
     retry: 1,
   });
@@ -147,6 +154,11 @@ export default function TrendRadar() {
                 className="underline"
               >Google Trend Radar</a>
             </p>
+            {trendsQuery.data?.last_updated && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Last updated {new Date(trendsQuery.data.last_updated).toLocaleString()}
+              </p>
+            )}
           </div>
           <div className="text-sm text-muted-foreground">Auto-refresh every 30s · Google signal velocity only</div>
         </div>
